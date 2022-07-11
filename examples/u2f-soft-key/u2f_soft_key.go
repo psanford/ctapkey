@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-
 	signer, err := memory.New()
 	if err != nil {
 		panic(err)

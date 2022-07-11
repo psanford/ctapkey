@@ -1,6 +1,6 @@
 module github.com/psanford/ctapkey
 
-go 1.18
+go 1.16
 
 require (
 	github.com/foxcpp/go-assuan v1.0.0
