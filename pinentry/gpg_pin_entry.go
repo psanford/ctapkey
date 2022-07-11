@@ -11,27 +11,26 @@ import (
 
 	assuan "github.com/foxcpp/go-assuan/client"
 	"github.com/foxcpp/go-assuan/pinentry"
-	pinentryi "github.com/psanford/ctapkey/pinentry"
 )
-
-func New() *Pinentry {
-	return &Pinentry{}
-}
-
-type Pinentry struct {
-	mu            sync.Mutex
-	activeRequest *request
-}
 
 type request struct {
 	timeout       time.Duration
-	pendingResult chan pinentryi.Result
+	pendingResult chan Result
 	extendTimeout chan time.Duration
 
 	reqID []byte
 }
 
-func (pe *Pinentry) ConfirmPresence(prompt string, id []byte) (chan pinentryi.Result, error) {
+type gpgPinentry struct {
+	mu            sync.Mutex
+	activeRequest *request
+}
+
+func New() PinEntry {
+	return &gpgPinentry{}
+}
+
+func (pe *gpgPinentry) ConfirmPresence(prompt string, id []byte) (chan Result, error) {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
@@ -57,7 +56,7 @@ func (pe *Pinentry) ConfirmPresence(prompt string, id []byte) (chan pinentryi.Re
 	pe.activeRequest = &request{
 		timeout:       timeout,
 		reqID:         id,
-		pendingResult: make(chan pinentryi.Result),
+		pendingResult: make(chan Result),
 		extendTimeout: make(chan time.Duration),
 	}
 
@@ -66,12 +65,12 @@ func (pe *Pinentry) ConfirmPresence(prompt string, id []byte) (chan pinentryi.Re
 	return pe.activeRequest.pendingResult, nil
 }
 
-func (pe *Pinentry) GetPin(prompt string, id []byte) (chan pinentryi.Result, error) {
+func (pe *gpgPinentry) GetPin(prompt string, id []byte) (chan Result, error) {
 	return nil, errors.New("GetPin not implemented")
 }
 
-func (pe *Pinentry) prompt(req *request, prompt string) {
-	sendResult := func(r pinentryi.Result) {
+func (pe *gpgPinentry) prompt(req *request, prompt string) {
+	sendResult := func(r Result) {
 		select {
 		case req.pendingResult <- r:
 		case <-time.After(req.timeout):
@@ -89,7 +88,7 @@ func (pe *Pinentry) prompt(req *request, prompt string) {
 	defer cancel()
 	p, cmd, err := launchPinEntry(childCtx)
 	if err != nil {
-		sendResult(pinentryi.Result{
+		sendResult(Result{
 			OK:    false,
 			Error: fmt.Errorf("failed to start pinentry: %w", err),
 		})
@@ -117,12 +116,12 @@ func (pe *Pinentry) prompt(req *request, prompt string) {
 	for {
 		select {
 		case ok := <-promptResult:
-			sendResult(pinentryi.Result{
+			sendResult(Result{
 				OK: ok,
 			})
 			return
 		case <-timer.C:
-			sendResult(pinentryi.Result{
+			sendResult(Result{
 				OK:    false,
 				Error: errors.New("request timed out"),
 			})

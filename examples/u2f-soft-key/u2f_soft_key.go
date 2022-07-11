@@ -6,7 +6,7 @@ import (
 
 	"github.com/psanford/ctapkey"
 	"github.com/psanford/ctapkey/examples/u2f-soft-key/memory"
-	"github.com/psanford/ctapkey/examples/u2f-soft-key/pinentry"
+	"github.com/psanford/ctapkey/pinentry"
 )
 
 func main() {
