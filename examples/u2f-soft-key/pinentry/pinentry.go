@@ -1,6 +1,7 @@
 package pinentry
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 
 	assuan "github.com/foxcpp/go-assuan/client"
 	"github.com/foxcpp/go-assuan/pinentry"
+	pinentryi "github.com/psanford/ctapkey/pinentry"
 )
 
 func New() *Pinentry {
@@ -23,26 +25,20 @@ type Pinentry struct {
 
 type request struct {
 	timeout       time.Duration
-	pendingResult chan Result
+	pendingResult chan pinentryi.Result
 	extendTimeout chan time.Duration
 
-	challengeParam   [32]byte
-	applicationParam [32]byte
+	reqID []byte
 }
 
-type Result struct {
-	OK    bool
-	Error error
-}
-
-func (pe *Pinentry) ConfirmPresence(prompt string, challengeParam, applicationParam [32]byte) (chan Result, error) {
+func (pe *Pinentry) ConfirmPresence(prompt string, id []byte) (chan pinentryi.Result, error) {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
 	timeout := 2 * time.Second
 
 	if pe.activeRequest != nil {
-		if challengeParam != pe.activeRequest.challengeParam || applicationParam != pe.activeRequest.applicationParam {
+		if !bytes.Equal(pe.activeRequest.reqID, id) {
 			return nil, errors.New("other request already in progress")
 		}
 
@@ -59,11 +55,10 @@ func (pe *Pinentry) ConfirmPresence(prompt string, challengeParam, applicationPa
 	}
 
 	pe.activeRequest = &request{
-		timeout:          timeout,
-		challengeParam:   challengeParam,
-		applicationParam: applicationParam,
-		pendingResult:    make(chan Result),
-		extendTimeout:    make(chan time.Duration),
+		timeout:       timeout,
+		reqID:         id,
+		pendingResult: make(chan pinentryi.Result),
+		extendTimeout: make(chan time.Duration),
 	}
 
 	go pe.prompt(pe.activeRequest, prompt)
@@ -71,8 +66,12 @@ func (pe *Pinentry) ConfirmPresence(prompt string, challengeParam, applicationPa
 	return pe.activeRequest.pendingResult, nil
 }
 
+func (pe *Pinentry) GetPin(prompt string, id []byte) (chan pinentryi.Result, error) {
+	return nil, errors.New("GetPin not implemented")
+}
+
 func (pe *Pinentry) prompt(req *request, prompt string) {
-	sendResult := func(r Result) {
+	sendResult := func(r pinentryi.Result) {
 		select {
 		case req.pendingResult <- r:
 		case <-time.After(req.timeout):
@@ -90,7 +89,7 @@ func (pe *Pinentry) prompt(req *request, prompt string) {
 	defer cancel()
 	p, cmd, err := launchPinEntry(childCtx)
 	if err != nil {
-		sendResult(Result{
+		sendResult(pinentryi.Result{
 			OK:    false,
 			Error: fmt.Errorf("failed to start pinentry: %w", err),
 		})
@@ -118,12 +117,12 @@ func (pe *Pinentry) prompt(req *request, prompt string) {
 	for {
 		select {
 		case ok := <-promptResult:
-			sendResult(Result{
+			sendResult(pinentryi.Result{
 				OK: ok,
 			})
 			return
 		case <-timer.C:
-			sendResult(Result{
+			sendResult(pinentryi.Result{
 				OK:    false,
 				Error: errors.New("request timed out"),
 			})
