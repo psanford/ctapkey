@@ -64,7 +64,7 @@ func (t *SoftToken) Events() chan HIDEvent {
 func (t *SoftToken) Run(ctx context.Context) {
 	channels := make(map[uint32]bool)
 	allocateChan := func() (uint32, bool) {
-		for k := 1; k < (1<<32)-1; k++ {
+		for k := 1; uint64(k) < (1<<32)-1; k++ {
 			inUse := channels[uint32(k)]
 			if !inUse {
 				channels[uint32(k)] = true
