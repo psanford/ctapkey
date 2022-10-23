@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/psanford/ctapkey/attestation"
+	"github.com/psanford/ctapkey/ctap2"
 	"github.com/psanford/ctapkey/fidohid"
 	"github.com/psanford/ctapkey/log"
 	"github.com/psanford/ctapkey/pinentry"
@@ -30,7 +31,8 @@ type Signer interface {
 
 type Fido2Signer interface {
 	Signer
-	FooBar()
+	// XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+	Fido2FooBar()
 }
 
 type Server struct {
@@ -38,6 +40,7 @@ type Server struct {
 	Signer   Signer
 	UHidName string
 	Logger   log.Logger
+	ctap2    *ctap2.CTAP2Key
 }
 
 func (s *Server) Run(ctx context.Context) error {
@@ -56,10 +59,12 @@ func (s *Server) Run(ctx context.Context) error {
 		s.UHidName = "ctapkey"
 	}
 
-	_, isFido2 := s.Signer.(Fido2Signer)
+	f2s, isFido2 := s.Signer.(Fido2Signer)
 
 	var tokenOpts []fidohid.Option
-	if !isFido2 {
+	if isFido2 {
+		s.ctap2 = ctap2.New(f2s)
+	} else {
 		tokenOpts = append(tokenOpts, fidohid.WithCTAP2Disabled())
 	}
 
@@ -73,6 +78,19 @@ func (s *Server) Run(ctx context.Context) error {
 	for evt := range token.Events() {
 		if evt.Error != nil {
 			s.Logger.Printf("got token error: %s", err)
+			continue
+		}
+
+		if evt.Cmd == fidohid.CmdCbor {
+			// ctap2 messages are encapsulated in CmdCbor.
+			respBytes, err := s.ctap2.HandleMsg(evt.Msg)
+			if err != nil {
+				s.Logger.Printf("fido2 err: %s, msg: %02x", err, evt.Msg)
+				continue
+			}
+
+			fmt.Printf("req: %+v\n", respBytes)
+			token.WriteResponse(ctx, evt, respBytes, statuscode.NoError)
 			continue
 		}
 
