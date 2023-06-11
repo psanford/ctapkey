@@ -114,7 +114,7 @@ func (t *SoftToken) Run(ctx context.Context) {
 			var nonce [8]byte
 			copy(nonce[:], innerMsg)
 
-			resp := newInitResponse(chanID, nonce)
+			resp := newInitResponse(chanID, nonce, t.ctap2)
 
 			err := writeRespose(t.device, reqChanID, CmdInit, resp.Marshal(), 0)
 			if err != nil {
@@ -436,7 +436,11 @@ type initResponse struct {
 	RawCapabilities    byte
 }
 
-func newInitResponse(channelID uint32, nonce [8]byte) *initResponse {
+func newInitResponse(channelID uint32, nonce [8]byte, supportsCtap2 bool) *initResponse {
+	var capabilities byte
+	if supportsCtap2 {
+		capabilities = cborCapability
+	}
 	return &initResponse{
 		Nonce:              nonce,
 		Channel:            channelID,
@@ -444,7 +448,7 @@ func newInitResponse(channelID uint32, nonce [8]byte) *initResponse {
 		MajorDeviceVersion: deviceMajor,
 		MinorDeviceVersion: deviceMinor,
 		BuildDeviceVersion: deviceBuild,
-		// RawCapabilities:    winkCapability,
+		RawCapabilities:    capabilities,
 	}
 }
 

@@ -26,12 +26,16 @@ type Fido2Signer interface {
 }
 
 type CTAP2Key struct {
-	Signer Fido2Signer
+	Signer      Fido2Signer
+	cborEncMode cbor.EncMode
 }
 
 func New(signer Fido2Signer) *CTAP2Key {
+	em, _ := cbor.CTAP2EncOptions().EncMode()
+
 	return &CTAP2Key{
-		Signer: signer,
+		Signer:      signer,
+		cborEncMode: em,
 	}
 }
 
@@ -51,10 +55,55 @@ func (c *CTAP2Key) HandleMsg(raw []byte) ([]byte, error) {
 }
 
 func (c *CTAP2Key) handleGetInfo() ([]byte, error) {
+	tf := true
 	info := getInfoResponse{
-		Versions: []string{"FIDO_2_1", "FIDO_2_0", "U2F_V2"},
+		// leave out "FIDO_2_1" for now.
+		// add back in when all features listed here are implemented:
+		// https://fidoalliance.org/specs/fido-v2.1-rd-20201208/fido-client-to-authenticator-protocol-v2.1-rd-20201208.html#mandatory-features
+		Versions: []string{"U2F_V2", "FIDO_2_0"},
+		// Extensions: []string{"credProtect", "hmac-secret"},
+		AAGUID: [16]byte([]byte("AAGUID0123456789")),
+		Options: getInfoOptions{
+			Platform:         false, // XXX this should probably be configurable
+			ResidentKey:      true,
+			UserPresence:     true,
+			UserVerification: false,
+			ClientPin:        &tf, // false will trigger prompt to set the pin, true will assume a pin is set.
+
+		},
+		MaxMsgSize:         1200,
+		UVAuthProtocols:    []uint64{2, 1},
+		MaxCredCountInList: 8,
+		MaxCredIdLen:       128,
+		Transports:         []string{"usb"},
+		Algorithms: []publicKeyCrendentialParameters{
+			{
+				Alg:  -7,
+				Type: "public-key",
+			},
+			{
+				Alg:  -8,
+				Type: "public-key",
+			},
+		},
+		MinPINLength: 4,
 	}
-	return cbor.Marshal(info)
+
+	msg, err := c.cborEncMode.Marshal(info)
+	if err != nil {
+		return nil, err
+	}
+
+	msg = c.encodeStatus(msg, CTAP1_ERR_SUCCESS)
+
+	return msg, nil
+}
+
+func (c *CTAP2Key) encodeStatus(msg []byte, status uint8) []byte {
+	out := make([]byte, len(msg)+1)
+	out[0] = status
+	copy(out[1:], msg)
+	return out
 }
 
 type cmdMsg struct {

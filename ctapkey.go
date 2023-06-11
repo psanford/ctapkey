@@ -76,6 +76,7 @@ func (s *Server) Run(ctx context.Context) error {
 	go token.Run(ctx)
 
 	for evt := range token.Events() {
+		s.Logger.Printf("got evt: %+v", evt)
 		if evt.Error != nil {
 			s.Logger.Printf("got token error: %s", err)
 			continue
@@ -89,8 +90,9 @@ func (s *Server) Run(ctx context.Context) error {
 				continue
 			}
 
-			fmt.Printf("req: %+v\n", respBytes)
-			token.WriteResponse(ctx, evt, respBytes, statuscode.NoError)
+			// for cbor we don't set the status here. The status
+			// is the first byte in the cbor part of the payload
+			token.WriteResponse(ctx, evt, respBytes, 0)
 			continue
 		}
 
@@ -115,6 +117,7 @@ func (s *Server) Run(ctx context.Context) error {
 			// send a not supported error for any commands that we don't understand.
 			// Browsers depend on this to detect what features the token supports
 			// (i.e. the u2f backwards compatibility)
+
 			token.WriteResponse(ctx, evt, nil, statuscode.ClaNotSupported)
 		}
 	}
@@ -127,7 +130,6 @@ func (s *Server) handleVersion(parentCtx context.Context, token *fidohid.SoftTok
 }
 
 func (s *Server) handleAuthenticate(parentCtx context.Context, token *fidohid.SoftToken, evt fidohid.HIDEvent, req *u2f.AuthenticatorRequest) {
-
 	keyHandle := req.Authenticate.KeyHandle
 	appParam := req.Authenticate.ApplicationParam[:]
 
